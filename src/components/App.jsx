@@ -86,7 +86,6 @@ function App() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [reactivity, setReactivity] = useState(1.4);
   const [audioSmooth, setAudioSmooth] = useState(0.55);
-
   const [dryWetCenterHz, setDryWetCenterHz] = useState(100);
   const [dryWetWidthHz, setDryWetWidthHz] = useState(80);
   const routedDryWetRef = useRef(dryWet);
@@ -100,96 +99,74 @@ function App() {
   };
 
   const ensureAudioCtx = useCallback(() => {
-    if (!audioCtxRef.current) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      audioCtxRef.current = ctx;
-      const an = ctx.createAnalyser();
-      an.fftSize = 2048;
-      an.smoothingTimeConstant = 0.2;
-      analyserRef.current = an;
-    }
+    if (audioCtxRef.current && audioCtxRef.current.state === 'running') return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtxRef.current = ctx;
+    const an = ctx.createAnalyser();
+    an.fftSize = 2048;
+    an.smoothingTimeConstant = 0.2;
+    analyserRef.current = an;
   }, []);
   
   const handleFile = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    ensureAudioCtx();
-    const ctx = audioCtxRef.current;
-  
-    if (type === 'video') {
-      if (!videoSourceNodeRef.current) {
-        const source = ctx.createMediaElementSource(videoRef.current);
-        const gain = ctx.createGain();
-        source.connect(gain).connect(analyserRef.current);
-        gain.connect(ctx.destination);
-        videoSourceNodeRef.current = { source, gain };
-      }
-      videoRef.current.src = url;
-      videoRef.current.load();
-      videoRef.current.play();
-      setMediaKind("video");
-    } else if (type === 'audio') {
-      if (!audioSourceNodeRef.current) {
-        const source = ctx.createMediaElementSource(audioElRef.current);
-        const gain = ctx.createGain();
-        source.connect(gain).connect(analyserRef.current);
-        gain.connect(ctx.destination);
-        audioSourceNodeRef.current = { source, gain };
-      }
-      audioElRef.current.src = url;
-      audioElRef.current.load();
-      audioElRef.current.play();
-      setHasAudio(true);
-    } else if (type === 'image') {
-      const img = new Image();
-      img.onload = () => {
-        if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
-        imageTexInfo.current = { img, url };
-        setMediaKind("image");
-      };
-      img.src = url;
-    }
+    
+    ensureAudioCtx().then(() => {
+        const ctx = audioCtxRef.current;
+    
+        if (type === 'video') {
+          if (!videoSourceNodeRef.current) {
+            const source = ctx.createMediaElementSource(videoRef.current);
+            const gain = ctx.createGain();
+            source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
+            videoSourceNodeRef.current = { source, gain };
+          }
+          videoRef.current.src = url;
+          videoRef.current.load();
+          videoRef.current.play();
+          setMediaKind("video");
+        } else if (type === 'audio') {
+          if (!audioSourceNodeRef.current) {
+            const source = ctx.createMediaElementSource(audioElRef.current);
+            const gain = ctx.createGain();
+            source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
+            audioSourceNodeRef.current = { source, gain };
+          }
+          audioElRef.current.src = url;
+          audioElRef.current.load();
+          audioElRef.current.play();
+          setHasAudio(true);
+        } else if (type === 'image') {
+          const img = new Image();
+          img.onload = () => {
+            if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
+            imageTexInfo.current = { img, url };
+            setMediaKind("image");
+          };
+          img.src = url;
+        }
+    });
   };
 
-  useEffect(() => {
-    if (videoSourceNodeRef.current) videoSourceNodeRef.current.gain.gain.value = mutedVideo ? 0 : 1;
-  }, [mutedVideo]);
-  
-  useEffect(() => {
+  const initGlAndLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const gl = canvas.getContext("webgl");
     if (!gl) { setHasWebGL(false); return; }
     glRef.current = gl; startTimeRef.current = performance.now();
-    const posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
-    const uvBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]),gl.STATIC_DRAW);
+    const posBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+    const uvBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]), gl.STATIC_DRAW);
     texRef.current = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texRef.current);
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([20,0,40,255]));
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([20,0,40,255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    const FRAG_SRC = shaderList[selectedShaderIndex].source;
-    try {
-      const newProgram = createProgram(gl, VERT_SRC, FRAG_SRC);
-      if (programRef.current) gl.deleteProgram(programRef.current);
-      programRef.current = newProgram;
-      gl.useProgram(newProgram);
-      const aPos=gl.getAttribLocation(newProgram,"a_position"); gl.enableVertexAttribArray(aPos); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.vertexAttribPointer(aPos,2,gl.FLOAT,!1,0,0);
-      const aUV=gl.getAttribLocation(newProgram,"a_texCoord"); gl.enableVertexAttribArray(aUV); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.vertexAttribPointer(aUV,2,gl.FLOAT,!1,0,0);
-      uniformsRef.current = {
-        u_resolution: gl.getUniformLocation(newProgram, "u_resolution"), u_time: gl.getUniformLocation(newProgram, "u_time"),
-        u_audio: gl.getUniformLocation(newProgram, "u_audio"), u_dryWet: gl.getUniformLocation(newProgram, "u_dryWet"),
-        u_amount: gl.getUniformLocation(newProgram, "u_amount"), u_glitch: gl.getUniformLocation(newProgram, "u_glitch"),
-        u_psy: gl.getUniformLocation(newProgram, "u_psy"), u_bump: gl.getUniformLocation(newProgram, "u_bump"),
-        u_lightAng: gl.getUniformLocation(newProgram, "u_lightAng"),
-      };
-    } catch(e) { console.error("Shader Compile Error:", e); if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); }
-  }, [selectedShaderIndex]);
-
-  useEffect(() => {
     let currentAudioLevel = 0; let freqData;
     const drawScene = (time) => {
+      if (!glRef.current || !programRef.current) { rafRef.current = requestAnimationFrame(drawScene); return; }
       const gl = glRef.current;
-      if (!gl || !programRef.current) { rafRef.current = requestAnimationFrame(drawScene); return; }
       const dpr = window.devicePixelRatio || 1; const w = Math.floor(gl.canvas.clientWidth*dpr); const h = Math.floor(gl.canvas.clientHeight*dpr);
       if (gl.canvas.width !== w || gl.canvas.height !== h) { gl.canvas.width = w; gl.canvas.height = h; gl.viewport(0, 0, w, h); }
       
@@ -203,7 +180,6 @@ function App() {
         const targetLevel = Math.min(1.0, globalAvg * reactivity * 0.1);
         currentAudioLevel = currentAudioLevel * audioSmooth + targetLevel * (1.0 - audioSmooth);
         setAudioLevel(currentAudioLevel);
-
         const [startBin, endBin] = bandToBins(dryWetCenterHz, dryWetWidthHz, audioCtxRef.current.sampleRate, analyserRef.current.fftSize);
         let bandSum = 0;
         for(let i = startBin; i <= endBin; i++) bandSum += Math.pow(10, freqData[i] / 10);
@@ -211,7 +187,7 @@ function App() {
         routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity);
       }
       
-      if (mediaKind === "video" && videoRef.current && !videoRef.current.paused) {
+      if (mediaKind === "video" && videoRef.current && videoRef.current.readyState >= 3) {
         gl.bindTexture(gl.TEXTURE_2D, texRef.current);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoRef.current);
       } else if (mediaKind === "image" && imageTexInfo.current.img) {
@@ -230,8 +206,34 @@ function App() {
     };
     rafRef.current = requestAnimationFrame(drawScene);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [reactivity, audioSmooth, dryWet, amount, glitch, psy, bump, lightAng, mediaKind, selectedShaderIndex, dryWetCenterHz, dryWetWidthHz]);
+  }, [reactivity, audioSmooth, dryWet, amount, glitch, psy, bump, lightAng, mediaKind, dryWetCenterHz, dryWetWidthHz]);
 
+  useEffect(() => {
+    initGlAndLoop();
+  }, [initGlAndLoop]);
+
+  useEffect(() => {
+    const gl = glRef.current;
+    if (!gl) return;
+    const FRAG_SRC = shaderList[selectedShaderIndex].source;
+    try {
+      const newProgram = createProgram(gl, VERT_SRC, FRAG_SRC);
+      if (programRef.current) gl.deleteProgram(programRef.current);
+      programRef.current = newProgram;
+      const posBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+      const uvBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]), gl.STATIC_DRAW);
+      const aPos=gl.getAttribLocation(newProgram,"a_position"); gl.enableVertexAttribArray(aPos); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.vertexAttribPointer(aPos,2,gl.FLOAT,!1,0,0);
+      const aUV=gl.getAttribLocation(newProgram,"a_texCoord"); gl.enableVertexAttribArray(aUV); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.vertexAttribPointer(aUV,2,gl.FLOAT,!1,0,0);
+      uniformsRef.current = {
+        u_resolution: gl.getUniformLocation(newProgram, "u_resolution"), u_time: gl.getUniformLocation(newProgram, "u_time"),
+        u_audio: gl.getUniformLocation(newProgram, "u_audio"), u_dryWet: gl.getUniformLocation(newProgram, "u_dryWet"),
+        u_amount: gl.getUniformLocation(newProgram, "u_amount"), u_glitch: gl.getUniformLocation(newProgram, "u_glitch"),
+        u_psy: gl.getUniformLocation(newProgram, "u_psy"), u_bump: gl.getUniformLocation(newProgram, "u_bump"),
+        u_lightAng: gl.getUniformLocation(newProgram, "u_lightAng"),
+      };
+    } catch(e) { console.error("Shader Compile Error:", e); if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); }
+  }, [selectedShaderIndex]);
+  
   const currentShader = shaderList[selectedShaderIndex];
   return (
     <div className="flex flex-col md:flex-row h-full font-sans bg-neutral-900 text-neutral-100">
@@ -246,9 +248,9 @@ function App() {
         <div className="p-3 bg-neutral-900 rounded-lg space-y-3">
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Media</h2>
           <div className="grid grid-cols-1 gap-2">
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Obraz <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e, 'image')} /></label>
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Wideo <input type="file" accept="video/*" className="hidden" onChange={(e) => handleFile(e, 'video')} /></label>
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Audio <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFile(e, 'audio')} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Obraz <input type="file" accept="image/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'image'); }} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Wideo <input type="file" accept="video/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'video'); }} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Audio <input type="file" accept="audio/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'audio'); }} /></label>
           </div>
           {mediaKind === 'video' && (
             <div className="flex items-center space-x-2 pt-2">
@@ -291,4 +293,4 @@ function App() {
     </div>
   );
 }
-export default App;
+e
