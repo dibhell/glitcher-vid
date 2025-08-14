@@ -222,18 +222,14 @@ function App() {
         an.getByteFrequencyData(freqData);
 
         let globalSum = 0;
-        for(let i = 0; i < n; i++) {
-            globalSum += freqData[i];
-        }
+        for(let i = 0; i < n; i++) globalSum += freqData[i];
         const globalTarget = Math.min(1.0, (globalSum / n / 255.0) * reactivity);
         currentGlobalAudio = currentGlobalAudio * audioSmooth + globalTarget * (1.0 - audioSmooth);
         setAudioLevel(currentGlobalAudio);
         
         const [startBin, endBin] = bandToBins(dryWetCenterHz, dryWetWidthHz, audioCtxRef.current.sampleRate, an.fftSize);
         let bandSum = 0;
-        for(let i = startBin; i <= endBin; i++) {
-            bandSum += freqData[i];
-        }
+        for(let i = startBin; i <= endBin; i++) bandSum += freqData[i];
         const bandTarget = Math.min(1.0, (bandSum / (endBin - startBin + 1) / 255.0) * dryWetDrive * reactivity);
         currentRoutedAudio = currentRoutedAudio * audioSmooth + bandTarget * (1.0 - audioSmooth);
         audioReactiveValueRef.current = currentRoutedAudio;
