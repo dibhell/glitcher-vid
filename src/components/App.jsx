@@ -56,8 +56,6 @@ const Slider = ({ label, value, min, max, step, onChange, unit = '' }) => (
 );
 
 function App() {
-  console.log('--- KOMPONENT APP RENDER ---');
-
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const audioElRef = useRef(null);
@@ -183,7 +181,6 @@ function App() {
   }, [playbackRate]);
   
   const initGlAndLoop = useCallback(() => {
-    console.log('--- INICJALIZACJA WEBGL I PĘTLI RENDERUJĄCEJ ---');
     const canvas = canvasRef.current;
     const gl = canvas.getContext("webgl");
     if (!gl) { setHasWebGL(false); return; }
@@ -228,7 +225,7 @@ function App() {
           freqData = new Uint8Array(n);
         }
         an.getByteFrequencyData(freqData);
-        
+
         const u = allUniformsRef.current;
         let globalSum = 0;
         for(let i = 0; i < n; i++) globalSum += freqData[i];
@@ -279,13 +276,9 @@ function App() {
   useEffect(() => {
     const gl = glRef.current;
     if (!gl || !shaderList[selectedShaderIndex]) return;
-    
-    console.log(`--- PRÓBA KOMPILACJI SHADERA: ${shaderList[selectedShaderIndex].name} ---`);
     const FRAG_SRC = shaderList[selectedShaderIndex].source;
-    
     try {
       const newProgram = createProgram(gl, VERT_SRC, FRAG_SRC);
-      console.log(`✅ Shader ${shaderList[selectedShaderIndex].name} skompilowany pomyślnie.`);
       if (programRef.current) gl.deleteProgram(programRef.current);
       programRef.current = newProgram;
       
@@ -319,10 +312,7 @@ function App() {
         u_bump: gl.getUniformLocation(newProgram, "u_bump"),
         u_lightAng: gl.getUniformLocation(newProgram, "u_lightAng"),
       };
-    } catch(e) { 
-        console.error(`❌ BŁĄD KOMPILACJI SHADERA: ${shaderList[selectedShaderIndex].name}`, e);
-        if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); 
-    }
+    } catch(e) { console.error("Shader Compile Error:", e); if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); }
   }, [selectedShaderIndex]);
   
   const currentShader = shaderList[selectedShaderIndex];
