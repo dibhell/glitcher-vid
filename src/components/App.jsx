@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import VERT_SRC from '../shaders/vertex.glsl?raw';
 
-const fragShaderModules = import.meta.glob('../shaders/fragment/*.glsl', { as: 'raw', eager: true });
+// POPRAWIONA SKŁADNIA IMPORTU GLOB, ABY USUNĄĆ OSTRZEŻENIE
+const fragShaderModules = import.meta.glob('../shaders/fragment/*.glsl', { query: '?raw', import: 'default' });
 
 const shaderList = Object.entries(fragShaderModules).map(([path, glslCode]) => {
   const nameMatch = glslCode.match(/\/\/ name: (.*)/);
@@ -55,6 +56,7 @@ const Slider = ({ label, value, min, max, step, onChange, unit = '' }) => (
   </div>
 );
 
+// UWAGA: Funkcja App została przeniesiona *przed* linię export default
 function App() {
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
@@ -100,6 +102,10 @@ function App() {
 
   const ensureAudioCtx = useCallback(() => {
     if (audioCtxRef.current && audioCtxRef.current.state === 'running') return;
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+        return;
+    }
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtxRef.current = ctx;
     const an = ctx.createAnalyser();
@@ -113,50 +119,53 @@ function App() {
     if (!file) return;
     const url = URL.createObjectURL(file);
     
-    ensureAudioCtx().then(() => {
-        const ctx = audioCtxRef.current;
-    
-        if (type === 'video') {
-          if (!videoSourceNodeRef.current) {
-            const source = ctx.createMediaElementSource(videoRef.current);
-            const gain = ctx.createGain();
-            source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
-            videoSourceNodeRef.current = { source, gain };
-          }
-          videoRef.current.src = url;
-          videoRef.current.load();
-          videoRef.current.play();
-          setMediaKind("video");
-        } else if (type === 'audio') {
-          if (!audioSourceNodeRef.current) {
-            const source = ctx.createMediaElementSource(audioElRef.current);
-            const gain = ctx.createGain();
-            source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
-            audioSourceNodeRef.current = { source, gain };
-          }
-          audioElRef.current.src = url;
-          audioElRef.current.load();
-          audioElRef.current.play();
-          setHasAudio(true);
-        } else if (type === 'image') {
-          const img = new Image();
-          img.onload = () => {
-            if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
-            imageTexInfo.current = { img, url };
-            setMediaKind("image");
-          };
-          img.src = url;
-        }
-    });
+    ensureAudioCtx();
+    const ctx = audioCtxRef.current;
+
+    if (type === 'video') {
+      if (!videoSourceNodeRef.current) {
+        const source = ctx.createMediaElementSource(videoRef.current);
+        const gain = ctx.createGain();
+        source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
+        videoSourceNodeRef.current = { source, gain };
+      }
+      videoRef.current.src = url;
+      videoRef.current.load();
+      videoRef.current.play();
+      setMediaKind("video");
+    } else if (type === 'audio') {
+      if (!audioSourceNodeRef.current) {
+        const source = ctx.createMediaElementSource(audioElRef.current);
+        const gain = ctx.createGain();
+        source.connect(gain).connect(analyserRef.current).connect(ctx.destination);
+        audioSourceNodeRef.current = { source, gain };
+      }
+      audioElRef.current.src = url;
+      audioElRef.current.load();
+      audioElRef.current.play();
+      setHasAudio(true);
+    } else if (type === 'image') {
+      const img = new Image();
+      img.onload = () => {
+        if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
+        imageTexInfo.current = { img, url };
+        setMediaKind("image");
+      };
+      img.src = url;
+    }
   };
 
+  useEffect(() => {
+    if (videoSourceNodeRef.current) videoSourceNodeRef.current.gain.gain.value = mutedVideo ? 0 : 1;
+  }, [mutedVideo]);
+  
   const initGlAndLoop = useCallback(() => {
     const canvas = canvasRef.current;
     const gl = canvas.getContext("webgl");
     if (!gl) { setHasWebGL(false); return; }
     glRef.current = gl; startTimeRef.current = performance.now();
-    const posBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
-    const uvBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]), gl.STATIC_DRAW);
+    const posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+    const uvBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]),gl.STATIC_DRAW);
     texRef.current = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texRef.current);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([20,0,40,255]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -200,7 +209,8 @@ function App() {
       gl.uniform1f(uniformsRef.current.u_audio, currentAudioLevel);
       gl.uniform1f(uniformsRef.current.u_dryWet, routedDryWetRef.current * dryWet);
       gl.uniform1f(uniformsRef.current.u_amount, amount); gl.uniform1f(uniformsRef.current.u_glitch, glitch);
-      gl.uniform1f(uniformsRef.current.u_psy, psy); gl.uniform1f(uniformsRef.current.u_bump, bump); gl.uniform1f(uniformsRef.current.u_lightAng, lightAng);
+      gl.uniform1f(uniformsRef.current.u_psy, psy); gl.uniform1f(uniformsRef.current.u_bump, bump);
+      gl.uniform1f(uniformsRef.current.u_lightAng, lightAng);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       rafRef.current = requestAnimationFrame(drawScene);
     };
@@ -214,7 +224,7 @@ function App() {
 
   useEffect(() => {
     const gl = glRef.current;
-    if (!gl) return;
+    if (!gl || !shaderList[selectedShaderIndex]) return;
     const FRAG_SRC = shaderList[selectedShaderIndex].source;
     try {
       const newProgram = createProgram(gl, VERT_SRC, FRAG_SRC);
@@ -248,9 +258,9 @@ function App() {
         <div className="p-3 bg-neutral-900 rounded-lg space-y-3">
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Media</h2>
           <div className="grid grid-cols-1 gap-2">
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Obraz <input type="file" accept="image/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'image'); }} /></label>
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Wideo <input type="file" accept="video/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'video'); }} /></label>
-            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Audio <input type="file" accept="audio/*" className="hidden" onChange={async (e) => { await ensureAudioCtx(); handleFile(e, 'audio'); }} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Obraz <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e, 'image')} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Wideo <input type="file" accept="video/*" className="hidden" onChange={(e) => handleFile(e, 'video')} /></label>
+            <label className="text-sm bg-emerald-700 hover:bg-emerald-600 text-white text-center py-2 px-3 rounded-md cursor-pointer">Audio <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFile(e, 'audio')} /></label>
           </div>
           {mediaKind === 'video' && (
             <div className="flex items-center space-x-2 pt-2">
@@ -293,4 +303,6 @@ function App() {
     </div>
   );
 }
-e
+
+// NAJWAŻNIEJSZA LINIA: Eksportowanie komponentu App, aby inne pliki mogły go używać
+export default App;
