@@ -199,7 +199,10 @@ function App() {
         routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity * dryWetDrive);
       }
       
-      if (mediaKind === "video" && videoRef.current && videoRef.current.readyState >= 3) {
+      // =========================================================
+      // TUTAJ ZNAJDOWAŁ SIĘ BŁĄD - PONIŻEJ OSTATECZNA POPRAWKA
+      // =========================================================
+      if (mediaKind === "video" && !videoRef.current.paused) {
         gl.bindTexture(gl.TEXTURE_2D, texRef.current);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoRef.current);
       } else if (mediaKind === "image" && imageTexInfo.current.img) {
