@@ -1,0 +1,45 @@
+name: Deploy Web App to GitHub Pages
+
+on:
+  push:
+    branches: ["main"] # Uruchom przy każdej zmianie w głównej gałęzi
+  workflow_dispatch: # Pozwól na ręczne uruchomienie
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web application
+        run: npm run build # To tworzy folder 'dist'
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload production-ready files
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist' # Prześlij zawartość folderu 'dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
