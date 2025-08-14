@@ -56,6 +56,8 @@ const Slider = ({ label, value, min, max, step, onChange, unit = '' }) => (
 );
 
 function App() {
+  console.log('--- KOMPONENT APP RENDER ---');
+
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const audioElRef = useRef(null);
@@ -99,6 +101,11 @@ function App() {
   const audioReactiveValueRef = useRef(0);
   const mediaResolutionRef = useRef([1, 1]);
   
+  const allUniformsRef = useRef({});
+  useEffect(() => {
+    allUniformsRef.current = { amount, glitch, psy, bump, lightAng, reactivity, audioSmooth, dryWetCenterHz, dryWetWidthHz, dryWetDrive };
+  }, [amount, glitch, psy, bump, lightAng, reactivity, audioSmooth, dryWetCenterHz, dryWetWidthHz, dryWetDrive]);
+
   const freqToBin = (freq, sampleRate, fftSize) => Math.round(freq / (sampleRate / fftSize));
   const bandToBins = (centerHz, widthHz, sampleRate, fftSize) => {
     const halfWidth = Math.max(5, widthHz * 0.5);
@@ -176,6 +183,7 @@ function App() {
   }, [playbackRate]);
   
   const initGlAndLoop = useCallback(() => {
+    console.log('--- INICJALIZACJA WEBGL I PĘTLI RENDERUJĄCEJ ---');
     const canvas = canvasRef.current;
     const gl = canvas.getContext("webgl");
     if (!gl) { setHasWebGL(false); return; }
@@ -220,18 +228,19 @@ function App() {
           freqData = new Uint8Array(n);
         }
         an.getByteFrequencyData(freqData);
-
+        
+        const u = allUniformsRef.current;
         let globalSum = 0;
         for(let i = 0; i < n; i++) globalSum += freqData[i];
-        const globalTarget = Math.min(1.0, (globalSum / n / 255.0) * reactivity);
-        currentGlobalAudio = currentGlobalAudio * audioSmooth + globalTarget * (1.0 - audioSmooth);
+        const globalTarget = Math.min(1.0, (globalSum / n / 255.0) * u.reactivity);
+        currentGlobalAudio = currentGlobalAudio * u.audioSmooth + globalTarget * (1.0 - u.audioSmooth);
         setAudioLevel(currentGlobalAudio);
         
-        const [startBin, endBin] = bandToBins(dryWetCenterHz, dryWetWidthHz, audioCtxRef.current.sampleRate, an.fftSize);
+        const [startBin, endBin] = bandToBins(u.dryWetCenterHz, u.dryWetWidthHz, audioCtxRef.current.sampleRate, an.fftSize);
         let bandSum = 0;
         for(let i = startBin; i <= endBin; i++) bandSum += freqData[i];
-        const bandTarget = Math.min(1.0, (bandSum / (endBin - startBin + 1) / 255.0) * dryWetDrive * reactivity);
-        currentRoutedAudio = currentRoutedAudio * audioSmooth + bandTarget * (1.0 - audioSmooth);
+        const bandTarget = Math.min(1.0, (bandSum / (endBin - startBin + 1) / 255.0) * u.dryWetDrive * u.reactivity);
+        currentRoutedAudio = currentRoutedAudio * u.audioSmooth + bandTarget * (1.0 - u.audioSmooth);
         audioReactiveValueRef.current = currentRoutedAudio;
       }
       
@@ -250,11 +259,12 @@ function App() {
       gl.uniform1f(uniformsRef.current.u_time, (time - startTimeRef.current) * 0.001);
       gl.uniform1f(uniformsRef.current.u_audio, currentGlobalAudio);
       gl.uniform1f(uniformsRef.current.u_dryWet, audioReactiveValueRef.current);
-      gl.uniform1f(uniformsRef.current.u_amount, amount);
-      gl.uniform1f(uniformsRef.current.u_glitch, glitch);
-      gl.uniform1f(uniformsRef.current.u_psy, psy);
-      gl.uniform1f(uniformsRef.current.u_bump, bump);
-      gl.uniform1f(uniformsRef.current.u_lightAng, lightAng);
+      const u = allUniformsRef.current;
+      gl.uniform1f(uniformsRef.current.u_amount, u.amount);
+      gl.uniform1f(uniformsRef.current.u_glitch, u.glitch);
+      gl.uniform1f(uniformsRef.current.u_psy, u.psy);
+      gl.uniform1f(uniformsRef.current.u_bump, u.bump);
+      gl.uniform1f(uniformsRef.current.u_lightAng, u.lightAng);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       rafRef.current = requestAnimationFrame(drawScene);
     };
@@ -269,9 +279,13 @@ function App() {
   useEffect(() => {
     const gl = glRef.current;
     if (!gl || !shaderList[selectedShaderIndex]) return;
+    
+    console.log(`--- PRÓBA KOMPILACJI SHADERA: ${shaderList[selectedShaderIndex].name} ---`);
     const FRAG_SRC = shaderList[selectedShaderIndex].source;
+    
     try {
       const newProgram = createProgram(gl, VERT_SRC, FRAG_SRC);
+      console.log(`✅ Shader ${shaderList[selectedShaderIndex].name} skompilowany pomyślnie.`);
       if (programRef.current) gl.deleteProgram(programRef.current);
       programRef.current = newProgram;
       
@@ -305,7 +319,10 @@ function App() {
         u_bump: gl.getUniformLocation(newProgram, "u_bump"),
         u_lightAng: gl.getUniformLocation(newProgram, "u_lightAng"),
       };
-    } catch(e) { console.error("Shader Compile Error:", e); if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); }
+    } catch(e) { 
+        console.error(`❌ BŁĄD KOMPILACJI SHADERA: ${shaderList[selectedShaderIndex].name}`, e);
+        if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); 
+    }
   }, [selectedShaderIndex]);
   
   const currentShader = shaderList[selectedShaderIndex];
