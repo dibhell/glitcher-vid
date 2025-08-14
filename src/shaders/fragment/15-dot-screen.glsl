@@ -1,11 +1,10 @@
 // name: Dot Screen
 // params: amount
 precision mediump float; varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_audio; uniform float u_dryWet;
-uniform float u_amount;
+uniform float u_amount; uniform vec2 u_resolution;
 void main() {
     vec3 baseCol = texture2D(u_tex, v_uv).rgb;
     if (u_dryWet < 0.01) { gl_FragColor = vec4(baseCol, 1.0); return; }
-
     float angle = 1.57;
     float scale = 50.0 + u_amount * 200.0;
     float size = 0.5 + u_dryWet * 0.5;
