@@ -68,6 +68,9 @@ function App() {
   const imageTexInfo = useRef({ img: null, url: null });
   const [hasWebGL, setHasWebGL] = useState(true);
   const [mediaKind, setMediaKind] = useState("none");
+  const mediaKindRef = useRef("none"); // OSTATECZNA POPRAWKA: Użycie ref do śledzenia stanu
+  useEffect(() => { mediaKindRef.current = mediaKind; }, [mediaKind]);
+
   const [selectedShaderIndex, setSelectedShaderIndex] = useState(0);
   const [dryWet, setDryWet] = useState(0.8);
   const [amount, setAmount] = useState(0.5);
@@ -199,13 +202,10 @@ function App() {
         routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity * dryWetDrive);
       }
       
-      // =========================================================
-      // TUTAJ ZNAJDOWAŁ SIĘ BŁĄD - PONIŻEJ OSTATECZNA POPRAWKA
-      // =========================================================
-      if (mediaKind === "video" && !videoRef.current.paused) {
+      if (mediaKindRef.current === "video" && !videoRef.current.paused) {
         gl.bindTexture(gl.TEXTURE_2D, texRef.current);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoRef.current);
-      } else if (mediaKind === "image" && imageTexInfo.current.img) {
+      } else if (mediaKindRef.current === "image" && imageTexInfo.current.img) {
          gl.bindTexture(gl.TEXTURE_2D, texRef.current);
          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageTexInfo.current.img);
       }
