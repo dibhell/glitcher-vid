@@ -68,7 +68,7 @@ function App() {
   const imageTexInfo = useRef({ img: null, url: null });
   const [hasWebGL, setHasWebGL] = useState(true);
   const [mediaKind, setMediaKind] = useState("none");
-  const mediaKindRef = useRef("none"); // OSTATECZNA POPRAWKA: Użycie ref do śledzenia stanu
+  const mediaKindRef = useRef("none");
   useEffect(() => { mediaKindRef.current = mediaKind; }, [mediaKind]);
 
   const [selectedShaderIndex, setSelectedShaderIndex] = useState(0);
@@ -91,7 +91,7 @@ function App() {
   const [audioSmooth, setAudioSmooth] = useState(0.55);
   const [dryWetCenterHz, setDryWetCenterHz] = useState(100);
   const [dryWetWidthHz, setDryWetWidthHz] = useState(80);
-  const [dryWetDrive, setDryWetDrive] = useState(15.0);
+  const [dryWetDrive, setDryWetDrive] = useState(1.0);
   const routedDryWetRef = useRef(dryWet);
   const mediaResolutionRef = useRef([1, 1]);
   
@@ -113,6 +113,8 @@ function App() {
     audioCtxRef.current = ctx;
     const an = ctx.createAnalyser();
     an.fftSize = 2048;
+    an.minDecibels = -90;
+    an.maxDecibels = -10;
     an.smoothingTimeConstant = 0.2;
     analyserRef.current = an;
   }, []);
@@ -186,23 +188,30 @@ function App() {
       if (gl.canvas.width !== w || gl.canvas.height !== h) { gl.canvas.width = w; gl.canvas.height = h; gl.viewport(0, 0, w, h); }
       
       if (analyserRef.current) {
-        const n = analyserRef.current.frequencyBinCount;
-        if (!freqData || freqData.length !== n) freqData = new Float32Array(n);
-        analyserRef.current.getFloatFrequencyData(freqData);
+        const an = analyserRef.current;
+        const n = an.frequencyBinCount;
+        if (!freqData || freqData.length !== n) freqData = new Uint8Array(n);
+        an.getByteFrequencyData(freqData);
+
         let globalSum = 0;
-        for(let i = 0; i < n; i++) globalSum += Math.pow(10, freqData[i] / 10);
-        const globalAvg = globalSum / n;
-        const targetLevel = Math.min(1.0, globalAvg * reactivity * 0.1);
+        for(let i = 0; i < n; i++) {
+            globalSum += freqData[i];
+        }
+        const globalAvg = globalSum / n / 255.0;
+        const targetLevel = Math.min(1.0, globalAvg * reactivity);
         currentAudioLevel = currentAudioLevel * audioSmooth + targetLevel * (1.0 - audioSmooth);
         setAudioLevel(currentAudioLevel);
-        const [startBin, endBin] = bandToBins(dryWetCenterHz, dryWetWidthHz, audioCtxRef.current.sampleRate, analyserRef.current.fftSize);
+        
+        const [startBin, endBin] = bandToBins(dryWetCenterHz, dryWetWidthHz, audioCtxRef.current.sampleRate, an.fftSize);
         let bandSum = 0;
-        for(let i = startBin; i <= endBin; i++) bandSum += Math.pow(10, freqData[i] / 10);
-        const bandAvg = bandSum / (endBin - startBin + 1);
-        routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity * dryWetDrive);
+        for(let i = startBin; i <= endBin; i++) {
+            bandSum += freqData[i];
+        }
+        const bandAvg = (bandSum / (endBin - startBin + 1)) / 255.0;
+        routedDryWetRef.current = Math.min(1.0, bandAvg * dryWetDrive * reactivity);
       }
       
-      if (mediaKindRef.current === "video" && !videoRef.current.paused) {
+      if (mediaKindRef.current === "video" && videoRef.current && videoRef.current.videoWidth > 0 && !videoRef.current.paused) {
         gl.bindTexture(gl.TEXTURE_2D, texRef.current);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoRef.current);
       } else if (mediaKindRef.current === "image" && imageTexInfo.current.img) {
@@ -301,7 +310,7 @@ function App() {
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Routing Dry/Wet</h2>
             <Slider label="Częstotliwość centralna" value={dryWetCenterHz} min="40" max="10000" step="10" onChange={setDryWetCenterHz} unit=" Hz" />
             <Slider label="Szerokość pasma" value={dryWetWidthHz} min="10" max="5000" step="10" onChange={setDryWetWidthHz} unit=" Hz" />
-            <Slider label="Wzmocnienie (Drive)" value={dryWetDrive} min="0" max="100" step="0.5" onChange={setDryWetDrive} />
+            <Slider label="Wzmocnienie (Drive)" value={dryWetDrive} min="1" max="50" step="0.5" onChange={setDryWetDrive} />
         </div>
         <div className="p-3 bg-neutral-900 rounded-lg space-y-3">
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Efekty</h2>
