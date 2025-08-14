@@ -1,11 +1,10 @@
 // name: Kaleidoscope
 // params: psy
 precision mediump float; varying vec2 v_uv; uniform sampler2D u_tex; uniform float u_audio; uniform float u_dryWet;
-uniform float u_psy;
+uniform float u_psy; uniform vec2 u_resolution;
 void main() {
   vec3 baseCol = texture2D(u_tex, v_uv).rgb;
   if (u_dryWet < 0.01) { gl_FragColor = vec4(baseCol, 1.0); return; }
-
   vec2 p = v_uv - 0.5;
   float r = length(p);
   float a = atan(p.y, p.x);
