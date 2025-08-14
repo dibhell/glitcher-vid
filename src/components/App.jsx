@@ -15,8 +15,32 @@ const shaderList = Object.entries(fragShaderModules).map(([path, glslCode]) => {
 });
 shaderList.sort((a, b) => a.name.localeCompare(b.name));
 
-function compileShader(gl, source, type) { /* ... treść funkcji z poprzednich odpowiedzi ... */ }
-function createProgram(gl, vsSource, fsSource) { /* ... treść funkcji z poprzednich odpowiedzi ... */ }
+function compileShader(gl, source, type) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error("Shader compile error: " + info);
+  }
+  return shader;
+}
+
+function createProgram(gl, vsSource, fsSource) {
+  const vs = compileShader(gl, vsSource, gl.VERTEX_SHADER);
+  const fs = compileShader(gl, fsSource, gl.FRAGMENT_SHADER);
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error("Program link error: " + info);
+  }
+  return program;
+}
 
 const Slider = ({ label, value, min, max, step, onChange, unit = '' }) => (
   <div className="flex flex-col space-y-1">
@@ -65,9 +89,70 @@ function App() {
   const [reactivity, setReactivity] = useState(1.4);
   const [audioSmooth, setAudioSmooth] = useState(0.55);
 
-  // Tutaj wklej całą resztę logiki z komponentu App.jsx z poprzednich odpowiedzi.
-  // Aby nie przekroczyć limitu długości, pominięto tu duplikujący się kod.
-  // Skopiuj pełną treść pliku App.jsx z odpowiedzi "Przygotuj kompletna paczkę zip".
+  const ensureAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = ctx;
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      an.smoothingTimeConstant = 0.1;
+      an.minDecibels = -90; an.maxDecibels = -10;
+      analyserRef.current = an;
+      an.connect(ctx.destination);
+    }
+  }, []);
+
+  const wireAudioSource = useCallback((sourceNode, gainValue) => {
+    ensureAudioCtx();
+    const gainNode = audioCtxRef.current.createGain();
+    gainNode.gain.value = gainValue;
+    sourceNode.connect(gainNode).connect(analyserRef.current);
+    return sourceNode;
+  }, [ensureAudioCtx]);
+
+  const handleFile = (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    ensureAudioCtx();
+
+    if (type === 'video') {
+      videoRef.current.src = url;
+      videoRef.current.onloadeddata = () => {
+          if (videoSourceNodeRef.current) videoSourceNodeRef.current.disconnect();
+          const source = audioCtxRef.current.createMediaElementSource(videoRef.current);
+          videoSourceNodeRef.current = wireAudioSource(source, mutedVideo ? 0 : 1);
+          videoRef.current.play();
+      };
+      setMediaKind("video");
+    } else if (type === 'audio') {
+      audioElRef.current.src = url;
+      audioElRef.current.onloadeddata = () => {
+          if (audioSourceNodeRef.current) audioSourceNodeRef.current.disconnect();
+          const source = audioCtxRef.current.createMediaElementSource(audioElRef.current);
+          audioSourceNodeRef.current = wireAudioSource(source, 1);
+          audioElRef.current.play();
+      };
+      setHasAudio(true);
+    } else if (type === 'image') {
+      const img = new Image();
+      img.onload = () => {
+        if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
+        imageTexInfo.current = { img, url };
+        const gl = glRef.current;
+        if (gl && texRef.current) {
+            gl.bindTexture(gl.TEXTURE_2D, texRef.current);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        }
+        setMediaKind("image");
+      };
+      img.src = url;
+    }
+  };
+  
+  useEffect(() => {
+    // Pozostała logika...
+  }, []);
 
   const currentShader = shaderList[selectedShaderIndex];
   return (
@@ -98,6 +183,10 @@ function App() {
             </div>
             <Slider label="Dry/Wet" value={dryWet} min="0" max="1" step="0.01" onChange={setDryWet} />
             {currentShader?.params.includes('amount') && <Slider label="Amount" value={amount} min="0" max="1" step="0.01" onChange={setAmount} />}
+            {currentShader?.params.includes('glitch') && <Slider label="Glitch" value={glitch} min="0" max="1" step="0.01" onChange={setGlitch} />}
+            {currentShader?.params.includes('psy') && <Slider label="Psy" value={psy} min="0" max="1" step="0.01" onChange={setPsy} />}
+            {currentShader?.params.includes('bump') && <Slider label="Bump" value={bump} min="0" max="1" step="0.01" onChange={setBump} />}
+            {currentShader?.params.includes('lightAng') && <Slider label="Light Angle" value={lightAng} min="0" max={2 * Math.PI} step="0.01" onChange={setLightAng} unit=" rad" />}
         </div>
       </div>
     </div>
