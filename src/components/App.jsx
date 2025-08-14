@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import VERT_SRC from '../shaders/vertex.glsl?raw';
 
 // POPRAWIONA SKŁADNIA IMPORTU GLOB, ABY USUNĄĆ OSTRZEŻENIE
-const fragShaderModules = import.meta.glob('../shaders/fragment/*.glsl', { query: '?raw', import: 'default' });
+const fragShaderModules = import.meta.glob('../shaders/fragment/*.glsl', { as: 'raw', eager: true });
 
 const shaderList = Object.entries(fragShaderModules).map(([path, glslCode]) => {
   const nameMatch = glslCode.match(/\/\/ name: (.*)/);
