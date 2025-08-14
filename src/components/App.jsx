@@ -88,7 +88,9 @@ function App() {
   const [audioSmooth, setAudioSmooth] = useState(0.55);
   const [dryWetCenterHz, setDryWetCenterHz] = useState(100);
   const [dryWetWidthHz, setDryWetWidthHz] = useState(80);
+  const [dryWetDrive, setDryWetDrive] = useState(15.0);
   const routedDryWetRef = useRef(dryWet);
+  const mediaResolutionRef = useRef([1, 1]);
   
   const freqToBin = (freq, sampleRate, fftSize) => Math.round(freq / (sampleRate / fftSize));
   const bandToBins = (centerHz, widthHz, sampleRate, fftSize) => {
@@ -120,6 +122,9 @@ function App() {
     const ctx = audioCtxRef.current;
 
     if (type === 'video') {
+        videoRef.current.onloadedmetadata = () => {
+            mediaResolutionRef.current = [videoRef.current.videoWidth, videoRef.current.videoHeight];
+        };
       if (!videoSourceNodeRef.current) {
         const source = ctx.createMediaElementSource(videoRef.current);
         const gain = ctx.createGain();
@@ -146,6 +151,7 @@ function App() {
       img.onload = () => {
         if (imageTexInfo.current.url) URL.revokeObjectURL(imageTexInfo.current.url);
         imageTexInfo.current = { img, url };
+        mediaResolutionRef.current = [img.width, img.height];
         setMediaKind("image");
       };
       img.src = url;
@@ -161,8 +167,8 @@ function App() {
     const gl = canvas.getContext("webgl");
     if (!gl) { setHasWebGL(false); return; }
     glRef.current = gl; startTimeRef.current = performance.now();
-    const posBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
-    const uvBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]), gl.STATIC_DRAW);
+    const posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+    const uvBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,1,0,0,1,0,1,1,0,1,1]),gl.STATIC_DRAW);
     texRef.current = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texRef.current);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([20,0,40,255]));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -190,7 +196,7 @@ function App() {
         let bandSum = 0;
         for(let i = startBin; i <= endBin; i++) bandSum += Math.pow(10, freqData[i] / 10);
         const bandAvg = bandSum / (endBin - startBin + 1);
-        routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity);
+        routedDryWetRef.current = Math.min(1.0, bandAvg * reactivity * dryWetDrive);
       }
       
       if (mediaKind === "video" && videoRef.current && videoRef.current.readyState >= 3) {
@@ -202,18 +208,22 @@ function App() {
       }
       
       gl.clear(gl.COLOR_BUFFER_BIT); gl.useProgram(programRef.current);
-      gl.uniform2f(uniformsRef.current.u_resolution, w, h); gl.uniform1f(uniformsRef.current.u_time, (time - startTimeRef.current) * 0.001);
+      gl.uniform2f(uniformsRef.current.u_resolution, w, h);
+      gl.uniform2f(uniformsRef.current.u_mediaResolution, mediaResolutionRef.current[0], mediaResolutionRef.current[1]);
+      gl.uniform1f(uniformsRef.current.u_time, (time - startTimeRef.current) * 0.001);
       gl.uniform1f(uniformsRef.current.u_audio, currentAudioLevel);
       gl.uniform1f(uniformsRef.current.u_dryWet, routedDryWetRef.current * dryWet);
-      gl.uniform1f(uniformsRef.current.u_amount, amount); gl.uniform1f(uniformsRef.current.u_glitch, glitch);
-      gl.uniform1f(uniformsRef.current.u_psy, psy); gl.uniform1f(uniformsRef.current.u_bump, bump);
+      gl.uniform1f(uniformsRef.current.u_amount, amount);
+      gl.uniform1f(uniformsRef.current.u_glitch, glitch);
+      gl.uniform1f(uniformsRef.current.u_psy, psy);
+      gl.uniform1f(uniformsRef.current.u_bump, bump);
       gl.uniform1f(uniformsRef.current.u_lightAng, lightAng);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       rafRef.current = requestAnimationFrame(drawScene);
     };
     rafRef.current = requestAnimationFrame(drawScene);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [reactivity, audioSmooth, dryWet, amount, glitch, psy, bump, lightAng, mediaKind, dryWetCenterHz, dryWetWidthHz]);
+  }, []);
 
   useEffect(() => {
     initGlAndLoop();
@@ -232,10 +242,15 @@ function App() {
       const aPos=gl.getAttribLocation(newProgram,"a_position"); gl.enableVertexAttribArray(aPos); gl.bindBuffer(gl.ARRAY_BUFFER,posBuf); gl.vertexAttribPointer(aPos,2,gl.FLOAT,!1,0,0);
       const aUV=gl.getAttribLocation(newProgram,"a_texCoord"); gl.enableVertexAttribArray(aUV); gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf); gl.vertexAttribPointer(aUV,2,gl.FLOAT,!1,0,0);
       uniformsRef.current = {
-        u_resolution: gl.getUniformLocation(newProgram, "u_resolution"), u_time: gl.getUniformLocation(newProgram, "u_time"),
-        u_audio: gl.getUniformLocation(newProgram, "u_audio"), u_dryWet: gl.getUniformLocation(newProgram, "u_dryWet"),
-        u_amount: gl.getUniformLocation(newProgram, "u_amount"), u_glitch: gl.getUniformLocation(newProgram, "u_glitch"),
-        u_psy: gl.getUniformLocation(newProgram, "u_psy"), u_bump: gl.getUniformLocation(newProgram, "u_bump"),
+        u_resolution: gl.getUniformLocation(newProgram, "u_resolution"),
+        u_mediaResolution: gl.getUniformLocation(newProgram, "u_mediaResolution"),
+        u_time: gl.getUniformLocation(newProgram, "u_time"),
+        u_audio: gl.getUniformLocation(newProgram, "u_audio"),
+        u_dryWet: gl.getUniformLocation(newProgram, "u_dryWet"),
+        u_amount: gl.getUniformLocation(newProgram, "u_amount"),
+        u_glitch: gl.getUniformLocation(newProgram, "u_glitch"),
+        u_psy: gl.getUniformLocation(newProgram, "u_psy"),
+        u_bump: gl.getUniformLocation(newProgram, "u_bump"),
         u_lightAng: gl.getUniformLocation(newProgram, "u_lightAng"),
       };
     } catch(e) { console.error("Shader Compile Error:", e); if(selectedShaderIndex !== 0) setSelectedShaderIndex(0); }
@@ -283,6 +298,7 @@ function App() {
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Routing Dry/Wet</h2>
             <Slider label="Częstotliwość centralna" value={dryWetCenterHz} min="40" max="10000" step="10" onChange={setDryWetCenterHz} unit=" Hz" />
             <Slider label="Szerokość pasma" value={dryWetWidthHz} min="10" max="5000" step="10" onChange={setDryWetWidthHz} unit=" Hz" />
+            <Slider label="Wzmocnienie (Drive)" value={dryWetDrive} min="0" max="100" step="0.5" onChange={setDryWetDrive} />
         </div>
         <div className="p-3 bg-neutral-900 rounded-lg space-y-3">
           <h2 className="font-semibold text-neutral-300 border-b border-neutral-700 pb-2">Efekty</h2>
